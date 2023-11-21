@@ -1,358 +1,264 @@
-/*  POLE - Portable C++ library to access OLE Storage
- Copyright (C) 2002-2007 Ariya Hidayat (ariya@kde.org).
- 
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions
- are met:
- 
- 1. Redistributions of source code must retain the above copyright
- notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
- notice, this list of conditions and the following disclaimer in the
- documentation and/or other materials provided with the distribution.
- 
- THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+/* POLE - Portable C++ library to access OLE Storage
+   Copyright (C) 2002-2005 Ariya Hidayat <ariya@kde.org>
+
+   Performance optimization, API improvements: Dmitry Fedorov
+   Copyright 2009-2014 <www.bioimage.ucsb.edu> <www.dimin.net>
+
+   Fix for more than 236 mbat block entries : Michel Boudinot
+   Copyright 2010 <Michel.Boudinot@inaf.cnrs-gif.fr>
+
+   Considerable rework to allow for creation and updating of structured storage: Stephen Baum
+   Copyright 2013 <srbaum@gmail.com>
+
+   Added GetAllStreams, reworked datatypes
+   Copyright 2013 Felix Gorny from Bitplane
+
+   More datatype changes to allow for 32 and 64 bit code, some fixes involving incremental updates, flushing
+   Copyright 2013 <srbaum@gmail.com>
+
+   Version: 0.5.3
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
+   are met:
+   * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+   * Neither the name of the authors nor the names of its contributors may be
+     used to endorse or promote products derived from this software without
+     specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+   THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*
+Unicode notes:
+
+Filenames are considered to be encoded in UTF-8 encoding. On windows they
+can be re-encoded into UTF16 and proper wchar_t APIs will be used to open files.
+This is a default behavior for windows and is defined by the macro POLE_USE_UTF16_FILENAMES.
+
+Using a provided function and a modern c++ compiler it's easy to encode a
+wide string into utf8 char*:
+    std::string POLE::UTF16toUTF8(const std::wstring &utf16);
+*/
+
+//#pragma once
+//#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 
 #ifndef POLE_H
 #define POLE_H
 
-#include <string>
-#include <list>
-#include <fstream>
-#include <iostream>
-#include <list>
-#include <string>
-#include <vector>
-
 namespace POLE
 {
-    
+
+#if defined WIN32 || defined WIN64 || defined _WIN32 || defined _WIN64 || defined _MSVC
+#define POLE_USE_UTF16_FILENAMES
+#define POLE_WIN
+    typedef __int32 int32;
+    typedef __int64 int64;
+    typedef unsigned __int32 uint32;
+    typedef unsigned __int64 uint64;
+#else
+    typedef int int32;
+    typedef long long int64;
+    typedef unsigned int uint32;
+    typedef unsigned long long uint64;
+#endif
+
+    typedef uint64 t_offset;
+
+#ifdef POLE_USE_UTF16_FILENAMES
+    std::string UTF16toUTF8(const std::wstring &utf16);
+    std::wstring UTF8toUTF16(const std::string &utf8);
+#endif //POLE_USE_UTF16_FILENAMES
+
     class StorageIO;
     class Stream;
     class StreamIO;
-    class DirTree;
-    class DirEntry;
 
     class Storage
     {
         friend class Stream;
         friend class StreamOut;
-        
+
     public:
-        
+
         // for Storage::result()
         enum { Ok, OpenFailed, NotOLE, BadOLE, UnknownError };
-        
+
         /**
          * Constructs a storage with name filename.
          **/
-        Storage( char* bytes, unsigned long length );
-        
+        Storage(const char* filename);
+
+        /**
+          * Constructs a storage with IO object
+         **/
+        Storage(std::iostream& stream);
+
         /**
          * Destroys the storage.
          **/
         ~Storage();
-        
+
         /**
          * Opens the storage. Returns true if no error occurs.
          **/
-        bool open();
-        
+        bool open(bool bWriteAccess = false, bool bCreate = false);
+
         /**
          * Closes the storage.
          **/
         void close();
-        
+
         /**
          * Returns the error code of last operation.
          **/
         int result();
-        
+
         /**
          * Finds all stream and directories in given path.
          **/
-        std::list<std::string> entries( const std::string& path = "/" );
-        
+        std::list<std::string> entries(const std::string& path = "/");
+
         /**
          * Returns true if specified entry name is a directory.
          */
-        bool isDirectory( const std::string& name );
-        
-        DirTree* dirTree();
-        
-        StorageIO* storageIO();
-        
-        std::list<DirEntry *> dirEntries( const std::string& path = "/" );
-        
+        bool isDirectory(const std::string& name);
+
         /**
-         * Finds and returns a stream with the specified name.
-         * If reuse is true, this function returns the already created stream
-         * (if any). Otherwise it will create the stream.
-         *
-         * When errors occur, this function returns NULL.
-         *
-         * You do not need to delete the created stream, it will be handled
-         * automatically.
-         **/
-        Stream* stream( const std::string& name, bool reuse = true );
-        //Stream* stream( const std::string& name, int mode = Stream::ReadOnly, bool reuse = true );
-        
+         * Returns true if specified entry name exists.
+         */
+        bool exists(const std::string& name);
+
+        /**
+         * Returns true if storage can be modified.
+         */
+        bool isWriteable();
+
+        /**
+         * Deletes a specified stream or directory. If directory, it will
+         * recursively delete everything underneath said directory.
+         * returns true for success
+         */
+        bool deleteByName(const std::string& name);
+
+        /**
+         * Returns an accumulation of information, hopefully useful for determining if the storage
+         * should be defragmented.
+         */
+
+        void GetStats(uint64 *pEntries, uint64 *pUnusedEntries,
+            uint64 *pBigBlocks, uint64 *pUnusedBigBlocks,
+            uint64 *pSmallBlocks, uint64 *pUnusedSmallBlocks);
+
+        std::list<std::string> GetAllStreams(const std::string& storageName);
+
     private:
         StorageIO* io;
-        
+
         // no copy or assign
-        Storage( const Storage& );
-        Storage& operator=( const Storage& );
-        
+        Storage(const Storage&);
+        Storage& operator=(const Storage&);
+
     };
-    
+
     class Stream
     {
         friend class Storage;
         friend class StorageIO;
-        
+
     public:
-        
+
         /**
          * Creates a new stream.
          */
-        // name must be absolute, e.g "/Workbook"
-        Stream( Storage* storage, const std::string& name );
-        
+         // name must be absolute, e.g "/Workbook"
+        Stream(Storage* storage, const std::string& name, bool bCreate = false, int64 streamSize = 0);
+
         /**
          * Destroys the stream.
          */
         ~Stream();
-        
+
         /**
          * Returns the full stream name.
          */
         std::string fullName();
-        
+
         /**
          * Returns the stream size.
          **/
-        unsigned long size();
-        
+        uint64 size();
+
+        /**
+         * Changes the stream size (note this is done automatically if you write beyond the old size.
+         * Use this primarily as a preamble to rewriting a stream that is already open. Of course, you
+         * could simply delete the stream first).
+         **/
+        void setSize(int64 newSize);
+
         /**
          * Returns the current read/write position.
          **/
-        unsigned long tell();
-        
+        uint64 tell();
+
         /**
          * Sets the read/write position.
          **/
-        void seek( unsigned long pos );
-        
+        void seek(uint64 pos);
+
         /**
          * Reads a byte.
          **/
-        int getch();
-        
+        int64 getch();
+
         /**
          * Reads a block of data.
          **/
-        unsigned long read( unsigned char* data, unsigned long maxlen );
-        
+        uint64 read(unsigned char* data, uint64 maxlen);
+
+        /**
+         * Writes a block of data.
+         **/
+        uint64 write(unsigned char* data, uint64 len);
+
+        /**
+         * Makes sure that any changes for the stream (and the structured storage) have been written to disk.
+         **/
+        void flush();
+
         /**
          * Returns true if the read/write position is past the file.
          **/
         bool eof();
-        
+
         /**
          * Returns true whenever error occurs.
          **/
         bool fail();
-        
+
     private:
         StreamIO* io;
-        
-        // no copy or assign
-        Stream( const Stream& );
-        Stream& operator=( const Stream& );
-    };
-    
-    class Header
-    {
-    public:
-        unsigned char id[8];       // signature, or magic identifier
-        unsigned b_shift;          // bbat->blockSize = 1 << b_shift
-        unsigned s_shift;          // sbat->blockSize = 1 << s_shift
-        unsigned num_bat;          // blocks allocated for big bat
-        unsigned dirent_start;     // starting block for directory info
-        unsigned threshold;        // switch from small to big file (usually 4K)
-        unsigned sbat_start;       // starting block index to store small bat
-        unsigned num_sbat;         // blocks allocated for small bat
-        unsigned mbat_start;       // starting block to store meta bat
-        unsigned num_mbat;         // blocks allocated for meta bat
-        unsigned long bb_blocks[109];
-        
-        Header();
-        bool valid();
-        void load( const unsigned char* buffer );
-        void save( unsigned char* buffer );
-        void debug();
-    };
-    
-    class AllocTable
-    {
-    public:
-        static const unsigned Eof;
-        static const unsigned Avail;
-        static const unsigned Bat;
-        static const unsigned MetaBat;
-        unsigned blockSize;
-        AllocTable();
-        void clear();
-        unsigned long count();
-        void resize( unsigned long newsize );
-        void preserve( unsigned long n );
-        void set( unsigned long index, unsigned long val );
-        unsigned unused();
-        void setChain( std::vector<unsigned long> );
-        std::vector<unsigned long> follow( unsigned long start );
-        unsigned long operator[](unsigned long index );
-        void load( const unsigned char* buffer, unsigned len );
-        void save( unsigned char* buffer );
-        unsigned size();
-        void debug();
-    private:
-        std::vector<unsigned long> data;
-        AllocTable( const AllocTable& );
-        AllocTable& operator=( const AllocTable& );
-    };
-    
-    class DirEntry
-    {
-    public:
-        bool valid;            // false if invalid (should be skipped)
-        std::string name;      // the name, not in unicode anymore
-        bool dir;              // true if directory
-        unsigned long size;    // size (not valid if directory)
-        unsigned long start;   // starting block
-        unsigned prev;         // previous sibling
-        unsigned next;         // next sibling
-        unsigned child;        // first child
-        
-        DirEntry(): valid(false), name(), dir(false), size(0), start(0),
-        prev(0), next(0), child(0) {}
-    };
-    
-    class DirTree
-    {
-    public:
-        static const unsigned End;
-        DirTree();
-        void clear();
-        unsigned entryCount();
-        DirEntry* entry( unsigned index );
-        DirEntry* entry( const std::string& name, bool create=false );
-        int indexOf( DirEntry* e );
-        int parent( unsigned index );
-        std::string fullName( unsigned index );
-        std::vector<unsigned> children( unsigned index );
-        void load( unsigned char* buffer, unsigned len );
-        void save( unsigned char* buffer );
-        unsigned size();
-        void debug();
-    private:
-        std::vector<DirEntry> entries;
-        DirTree( const DirTree& );
-        DirTree& operator=( const DirTree& );
-    };
-    
-    class StorageIO
-    {
-    public:
-        Storage* storage;         // owner
-        unsigned char *filedata;
-        unsigned long dataLength;
-        int result;               // result of operation
-        bool opened;              // true if file is opened
-        unsigned long filesize;   // size of the file
-        
-        Header* header;           // storage header
-        DirTree* dirtree;         // directory tree
-        AllocTable* bbat;         // allocation table for big blocks
-        AllocTable* sbat;         // allocation table for small blocks
-        
-        std::vector<unsigned long> sb_blocks; // blocks for "small" files
-        
-        std::list<Stream*> streams;
-        
-        StorageIO( Storage* storage, char* bytes, unsigned long length );
-        ~StorageIO();
-        
-        bool open();
-        void close();
-        void flush();
-        void load();
-        void create();
-        
-        unsigned long loadBigBlocks( std::vector<unsigned long> blocks, unsigned char* buffer, unsigned long maxlen );
-        
-        unsigned long loadBigBlock( unsigned long block, unsigned char* buffer, unsigned long maxlen );
-        
-        unsigned long loadSmallBlocks( std::vector<unsigned long> blocks, unsigned char* buffer, unsigned long maxlen );
-        
-        unsigned long loadSmallBlock( unsigned long block, unsigned char* buffer, unsigned long maxlen );
-        
-        StreamIO* streamIO( const std::string& name );
-        
-    private:
-        // no copy or assign
-        StorageIO( const StorageIO& );
-        StorageIO& operator=( const StorageIO& );
-        
-    };
-    
-    class StreamIO
-    {
-    public:
-        StorageIO* io;
-        DirEntry* entry;
-        std::string fullName;
-        bool eof;
-        bool fail;
-        
-        StreamIO( StorageIO* io, DirEntry* entry );
-        ~StreamIO();
-        unsigned long size();
-        void seek( unsigned long pos );
-        unsigned long tell();
-        int getch();
-        unsigned long read( unsigned char* data, unsigned long maxlen );
-        unsigned long read( unsigned long pos, unsigned char* data, unsigned long maxlen );
-        
-        
-    private:
-        std::vector<unsigned long> blocks;
-        
-        // no copy or assign
-        StreamIO( const StreamIO& );
-        StreamIO& operator=( const StreamIO& );
-        
-        // pointer for read
-        unsigned long m_pos;
-        
-        // simple cache system to speed-up getch()
-        unsigned char* cache_data;
-        unsigned long cache_size;
-        unsigned long cache_pos;
-        void updateCache();
-    };
-    
-} // namespace POLE
 
+        // no copy or assign
+        Stream(const Stream&);
+        Stream& operator=(const Stream&);
+    };
+
+}
 
 #endif // POLE_H
