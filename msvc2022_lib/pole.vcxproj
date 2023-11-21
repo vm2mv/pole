@@ -22,7 +22,7 @@
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{E788F1EC-E2EF-47E8-9B29-1AE1BF6A2A4F}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>polepp</RootNamespace>
+    <RootNamespace>pole</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
