@@ -871,7 +871,7 @@ void dirtree_find_siblings(DirTree* dirtree, std::vector<uint64>& result,
     uint64 index)
 {
     DirEntry* e = dirtree->entry(index);
-    if (!e) return;
+    if (!e || !e->valid) return;
     if (e->prev != DirTree::End)
         dirtree_find_siblings(dirtree, result, e->prev);
     result.push_back(index);
